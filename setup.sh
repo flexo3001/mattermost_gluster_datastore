@@ -33,7 +33,7 @@ setup_containers() {
         > /etc/apt/sources.list.d/docker.list
 
     apt update -y &> /dev/null
-    apt install -y docker-ce docker-ce-cli docker-compose containerd.io
+    apt install -y --no-install-recommends docker-ce docker-ce-cli docker-compose containerd.io
     systemctl enable --now docker containerd
 
     mkdir -p /docker_volumes/mattermost/{config,data,logs,plugins,client-plugins}
