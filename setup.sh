@@ -82,7 +82,7 @@ services:
       - "8065:8065"
 EOF
 
-    docker-compose -f /docker_volumes/docker-compose.yml up -d
+    #docker-compose -f /docker_volumes/docker-compose.yml up -d
 }
 
 setup_glusterfs() {
@@ -128,7 +128,8 @@ setup_glusterfs() {
         for i in ${NODE_IPS[0]} ${NODE_IPS[1]}; do
             sshpass -p "vagrant" ssh -o StrictHostKeyChecking=no vagrant@${i} \
                 'sudo mount -t glusterfs ${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data; \
-                echo "${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data glusterfs defaults,_netdev 0 0" | sudo tee -a /etc/fstab'
+                 echo "${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data glusterfs defaults,_netdev 0 0" | sudo tee -a /etc/fstab; \
+                 sudo docker-compose -f /docker_volumes/docker-compose.yml up -d'
         done
     fi
 }
