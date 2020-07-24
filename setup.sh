@@ -23,7 +23,7 @@ setup_pre() {
     apt dist-upgrade -y
 
     # install prequisites
-    apt install -y curl gdisk
+    apt install -y curl gdisk gnupg2 sshpass
 }
 
 setup_containers() {
@@ -37,7 +37,7 @@ setup_containers() {
     systemctl enable --now docker containerd
 
     mkdir -p /docker_volumes/mattermost/{config,data,logs,plugins,client-plugins}
-    chown -R 2000:2000 mattermost
+    chown -R 2000:2000 /docker_volumes/mattermost
 
     cat > /docker_volumes/docker-compose.yml << EOF
 version: "3"
@@ -103,29 +103,43 @@ setup_glusterfs() {
     mount -a && mount
 
     if [[ $1 == "arbiter" ]]; then
-        for i in ${NODE_IPS[1]} ${NODE_IPS[2]}; do
+        for i in ${NODE_IPS[0]} ${NODE_IPS[1]}; do
             gluster peer probe $i
 
-            if [[ $? != 0 ]];
+            if [[ $? != 0 ]]; then
                 echo "Gluster: node probing failed."
                 gluster peer status
                 exit 1
             fi
         done
 
-        gluster volume create ${GLUSTER_VOLUME} replica 2 arbiter 1 ${NODE_IPS[1]} ${NODE_IPS[2]} ${NODE_IPS[0]}
+        # the order of nodes is important
+        gluster volume create ${GLUSTER_VOLUME} replica 2 arbiter 1 ${NODE_IPS[0]} ${NODE_IPS[1]} ${NODE_IPS[2]}
 
-        if [[ $? != 0 ]];
+        if [[ $? != 0 ]]; then
             echo "Gluster: volume creation failed."
             exit 1
         fi
 
         gluster volume start ${GLUSTER_VOLUME}
-        gluster volume bitrot ${GLUSTER_VOLUME} enable
+        gluster volume bitrot ${GLUSTER_VOLUME} enable  # bitrot detection
         gluster volume info
-    elif [[ $1 == "full" ]]; then
-        mkdir -p /docker_volumes/mattermost/data
-        mount -t glusterfs ${NODE_IPS[1]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data
-        echo "${NODE_IPS[1]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data glusterfs defaults,_netdev 0 0" >> /etc/fstab
+
+        for i in ${NODE_IPS[0]} ${NODE_IPS[1]}; do
+            sshpass -p "vagrant" ssh -o StrictHostKeyChecking=no vagrant@${i} \
+                'sudo mount -t glusterfs ${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data; \
+                echo "${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data glusterfs defaults,_netdev 0 0" | sudo tee -a /etc/fstab'
+        done
     fi
 }
+
+if [[ $1 == '' && $1 != "arbiter" && $1 != "full" ]]; then
+    usage
+elif [[ $1 == "arbiter" ]]; then
+    setup_pre
+    setup_glusterfs
+elif [[ $1 == "full" ]]; then
+    setup_pre
+    setup_glusterfs
+    setup_containers
+fi
