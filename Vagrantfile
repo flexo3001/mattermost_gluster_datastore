@@ -1,7 +1,8 @@
 NODE_IPS = ['192.168.0.101', '192.168.0.102', '192.168.0.103']
 
 Vagrant.configure("2") do |config|
-  config.vm.box="debian/buster64"
+  config.vm.box = "debian/buster64"
+  config.vm.provider "virtualbox"
 
   NODE_IPS.each_with_index do |node_ip, i|
     config.vm.define "node#{i + 1}" do |box|
@@ -11,15 +12,15 @@ Vagrant.configure("2") do |config|
       box.vm.network "private_network", ip: node_ip
 
       if i == 2
-        box.vm.provision :shell do |s|
-          s.path = 'setup.sh'
-          s.args = ["arbiter"]
-        end
+        ARG = "arbiter"
       else
-        box.vm.provision :shell do |s|
-          s.path = 'setup.sh'
-          s.args = ["full"]
-        end
+        ARG = "full"
+      end
+
+      box.vm.provision :shell do |s|
+        s.path = 'setup.sh'
+        s.args = ["#{ARG}"]
+        #s.reboot = true
       end
     end
   end
