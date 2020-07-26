@@ -1,5 +1,6 @@
 #!/bin/bash
 
+#set -x
 echo "start setting up main nodes"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -7,7 +8,7 @@ export DEBIAN_CODENAME=$(lsb_release -cs)
 export DEBIAN_VERS=$(lsb_release -rs)
 
 export GLUSTER_DISK=/dev/sdb
-export GLUSTER_VOLUME=gv0
+export GLUSTER_VOLUME="gv0"
 export NODE_IPS=(192.168.0.101 192.168.0.102 192.168.0.103)
 
 usage(){
@@ -24,6 +25,9 @@ setup_pre() {
 
     # install prequisites
     apt install -y curl gdisk gnupg2 sshpass
+
+    sed -i "s/PasswordAuthentication no/PasswordAuthentication yes/g" /etc/ssh/sshd_config
+    systemctl restart sshd
 }
 
 setup_containers() {
@@ -102,7 +106,7 @@ setup_glusterfs() {
     echo '/dev/sdb1 /data/brick1 xfs defaults 1 2' >> /etc/fstab
     mount -a && mount
 
-    if [[ $1 == "arbiter" ]]; then
+    if ip a | grep -q "inet ${NODE_IPS[2]}"; then
         for i in ${NODE_IPS[0]} ${NODE_IPS[1]}; do
             gluster peer probe $i
 
@@ -114,7 +118,8 @@ setup_glusterfs() {
         done
 
         # the order of nodes is important
-        gluster volume create ${GLUSTER_VOLUME} replica 2 arbiter 1 ${NODE_IPS[0]} ${NODE_IPS[1]} ${NODE_IPS[2]}
+        gluster volume create ${GLUSTER_VOLUME} replica 2 arbiter 1 ${NODE_IPS[0]}:/data/brick1/${GLUSTER_VOLUME} \
+            ${NODE_IPS[1]}:/data/brick1/${GLUSTER_VOLUME} ${NODE_IPS[2]}:/data/brick1/${GLUSTER_VOLUME}
 
         if [[ $? != 0 ]]; then
             echo "Gluster: volume creation failed."
@@ -127,9 +132,10 @@ setup_glusterfs() {
 
         for i in ${NODE_IPS[0]} ${NODE_IPS[1]}; do
             sshpass -p "vagrant" ssh -o StrictHostKeyChecking=no vagrant@${i} \
-                'sudo mount -t glusterfs ${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data; \
-                 echo "${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data glusterfs defaults,_netdev 0 0" | sudo tee -a /etc/fstab; \
-                 sudo docker-compose -f /docker_volumes/docker-compose.yml up -d'
+                "sudo mount -t glusterfs ${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data; \
+                 sudo chown -R 2000:2000 /docker_volumes/mattermost/data; \
+                 echo '${NODE_IPS[0]}:/${GLUSTER_VOLUME} /docker_volumes/mattermost/data glusterfs defaults,_netdev 0 0' | sudo tee -a /etc/fstab; \
+                 sudo docker-compose -f /docker_volumes/docker-compose.yml up -d"
         done
     fi
 }
